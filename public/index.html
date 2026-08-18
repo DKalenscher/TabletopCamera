@@ -96,6 +96,17 @@
           <button class="layout-btn" data-layout="split-tb">Top / Bottom</button>
           <button class="layout-btn" data-layout="split-lr">Side by Side</button>
         </div>
+        <div class="controls-sep"></div>
+        <div class="controls-section-label">Cameras</div>
+        <div class="game-cam-row">
+          <span class="game-cam-label">Face</span>
+          <select id="game-face-cam-select" class="game-cam-select"></select>
+        </div>
+        <div class="game-cam-row">
+          <span class="game-cam-label">Tabletop</span>
+          <select id="game-tabletop-cam-select" class="game-cam-select"></select>
+        </div>
+        <button id="apply-cams-btn" class="btn-secondary">Apply Cameras</button>
       </div>
     </div>
 
@@ -104,14 +115,46 @@
         <video id="remote-tabletop" autoplay playsinline></video>
         <div class="video-error hidden" id="remote-tabletop-error">Could not start video</div>
         <div class="view-label">Opponent&rsquo;s Tabletop</div>
-        <button id="remote-tabletop-rotate" class="view-btn" title="Rotate">&#8635;</button>
+        <div class="cam-controls" id="remote-tabletop-controls">
+          <button class="cam-controls-toggle" title="Camera Controls">&#9881;</button>
+          <div class="cam-controls-panel hidden">
+            <div class="cc-row">
+              <button class="cc-btn" data-video="remote-tabletop" data-action="zoom-in"  title="Zoom In">+</button>
+              <button class="cc-btn" data-video="remote-tabletop" data-action="zoom-out" title="Zoom Out">&#8722;</button>
+              <button class="cc-btn" data-video="remote-tabletop" data-action="rotate"   title="Rotate">&#8635;</button>
+              <button class="cc-btn" data-video="remote-tabletop" data-action="reset"    title="Reset">&#8857;</button>
+            </div>
+            <div class="cc-dpad">
+              <button class="cc-btn" data-video="remote-tabletop" data-action="pan-up"    title="Pan Up">&#9650;</button>
+              <button class="cc-btn" data-video="remote-tabletop" data-action="pan-left"  title="Pan Left">&#9664;</button>
+              <button class="cc-btn" data-video="remote-tabletop" data-action="pan-right" title="Pan Right">&#9654;</button>
+              <button class="cc-btn" data-video="remote-tabletop" data-action="pan-down"  title="Pan Down">&#9660;</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div id="secondary-panel" class="hidden">
         <video id="local-tabletop-main" autoplay playsinline muted></video>
         <div class="video-error hidden" id="local-tabletop-main-error">No tabletop cam</div>
         <div class="view-label">Your Tabletop</div>
-        <button id="local-tabletop-main-rotate" class="view-btn" title="Rotate">&#8635;</button>
+        <div class="cam-controls" id="local-tabletop-main-controls">
+          <button class="cam-controls-toggle" title="Camera Controls">&#9881;</button>
+          <div class="cam-controls-panel hidden">
+            <div class="cc-row">
+              <button class="cc-btn" data-video="tabletop-cam" data-action="zoom-in"  title="Zoom In">+</button>
+              <button class="cc-btn" data-video="tabletop-cam" data-action="zoom-out" title="Zoom Out">&#8722;</button>
+              <button class="cc-btn" data-video="tabletop-cam" data-action="rotate"   title="Rotate">&#8635;</button>
+              <button class="cc-btn" data-video="tabletop-cam" data-action="reset"    title="Reset">&#8857;</button>
+            </div>
+            <div class="cc-dpad">
+              <button class="cc-btn" data-video="tabletop-cam" data-action="pan-up"    title="Pan Up">&#9650;</button>
+              <button class="cc-btn" data-video="tabletop-cam" data-action="pan-left"  title="Pan Left">&#9664;</button>
+              <button class="cc-btn" data-video="tabletop-cam" data-action="pan-right" title="Pan Right">&#9654;</button>
+              <button class="cc-btn" data-video="tabletop-cam" data-action="pan-down"  title="Pan Down">&#9660;</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div><!-- #video-area -->
 
@@ -134,6 +177,7 @@
     </div>
 
     <div id="local-previews">
+      <button id="local-previews-toggle" title="Hide preview bar">&#9660;</button>
       <div class="preview-item" id="local-face-preview">
         <video id="local-face" autoplay playsinline muted></video>
         <div class="video-error hidden" id="local-face-error">Could not start video</div>

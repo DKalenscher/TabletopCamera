@@ -311,11 +311,39 @@ h1 {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
-  min-width: 190px;
+  min-width: 220px;
   box-shadow: 0 8px 28px rgba(0,0,0,0.65);
   flex-direction: column;
   gap: 8px;
 }
+
+.game-cam-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.game-cam-label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  width: 46px;
+}
+
+.game-cam-select {
+  flex: 1;
+  padding: 4px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 0.78rem;
+  outline: none;
+  min-width: 0;
+}
+.game-cam-select:focus { border-color: var(--accent); }
 
 #controls-toggle.open #controls-panel { display: flex; }
 
@@ -440,12 +468,33 @@ h1 {
 /* Local previews */
 #local-previews {
   display: flex;
+  align-items: center;
   gap: 8px;
   padding: 8px 12px;
   background: var(--surface);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
+
+#local-previews-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 4px 7px;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: background 0.15s;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+#local-previews-toggle:hover { background: rgba(255,255,255,0.05); }
+
+#local-previews.collapsed { padding: 5px 12px; }
+#local-previews.collapsed .preview-item { display: none; }
 
 .preview-item {
   position: relative;
@@ -552,22 +601,81 @@ h1 {
 .cam-btn:hover { background: rgba(0,0,0,0.85); }
 .cam-btn.muted { opacity: 0.4; }
 
-/* Rotate button overlaid on main tabletop view */
-.view-btn {
+/* ===== CAM CONTROLS WIDGET ===== */
+
+.cam-controls {
   position: absolute;
-  bottom: 36px;
-  right: 12px;
-  background: rgba(0,0,0,0.72);
-  color: var(--text);
-  border: 1px solid rgba(255,255,255,0.12);
+  bottom: 10px;
+  right: 10px;
+  z-index: 10;
+}
+
+.cam-controls-toggle {
+  width: 34px;
+  height: 34px;
+  background: rgba(0,0,0,0.75);
+  border: 1px solid rgba(255,255,255,0.14);
   border-radius: 6px;
-  font-size: 1.3rem;
-  padding: 7px 10px;
+  color: var(--text);
+  font-size: 1rem;
   cursor: pointer;
-  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: background 0.15s;
 }
-.view-btn:hover { background: rgba(0,0,0,0.9); }
+
+.cam-controls-toggle:hover { background: rgba(0,0,0,0.92); }
+
+.cam-controls-panel {
+  position: absolute;
+  bottom: 42px;
+  right: 0;
+  background: rgba(10,10,10,0.88);
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  backdrop-filter: blur(4px);
+}
+
+.cam-controls-panel.hidden { display: none; }
+
+.cc-row {
+  display: flex;
+  gap: 3px;
+}
+
+.cc-dpad {
+  display: grid;
+  grid-template-areas: ". up ." "left . right" ". down .";
+  grid-template-columns: repeat(3, 30px);
+  gap: 3px;
+}
+
+.cc-dpad [data-action="pan-up"]    { grid-area: up; }
+.cc-dpad [data-action="pan-left"]  { grid-area: left; }
+.cc-dpad [data-action="pan-right"] { grid-area: right; }
+.cc-dpad [data-action="pan-down"]  { grid-area: down; }
+
+.cc-btn {
+  width: 30px;
+  height: 30px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.88rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s;
+}
+
+.cc-btn:hover { background: rgba(255,255,255,0.18); }
 
 /* Video error overlays */
 .video-wrapper {
