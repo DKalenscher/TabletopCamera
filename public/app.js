@@ -9,6 +9,7 @@ let tabletopStream = null;
 let camsReady = false;
 let remoteStreamMapping = null; // { faceStreamId, tabletopStreamId }
 const remoteStreams = {};       // streamId -> MediaStream
+let currentLayout = 'default';
 
 // TURN server runs on the same Pi as the signaling server.
 // location.hostname resolves correctly whether on LAN or internet.
@@ -304,6 +305,38 @@ function applyRemoteStreams() {
   }
 }
 
+// ===== Layout =====
+function syncSecondaryPanel() {
+  if (currentLayout === 'default') return;
+  const vid = $('local-tabletop-main');
+  if (tabletopStream) {
+    clearVideoError('local-tabletop-main');
+    vid.srcObject = tabletopStream;
+  } else {
+    vid.srcObject = null;
+    showVideoError('local-tabletop-main', 'No tabletop cam');
+  }
+}
+
+function applyLayout(layout) {
+  currentLayout = layout;
+  $('game').dataset.layout = layout;
+
+  document.querySelectorAll('.layout-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.layout === layout);
+  });
+
+  const isSplit = layout !== 'default';
+  $('secondary-panel').classList.toggle('hidden', !isSplit);
+  $('local-tabletop-preview').classList.toggle('hidden', isSplit);
+
+  if (isSplit) {
+    syncSecondaryPanel();
+  } else {
+    $('local-tabletop-main').srcObject = null;
+  }
+}
+
 // ===== Camera swap =====
 function swapCameras() {
   // Swap stream variables
@@ -325,6 +358,8 @@ function swapCameras() {
       tabletopStreamId: tabletopStream?.id ?? null,
     }));
   }
+
+  syncSecondaryPanel();
 }
 
 // ===== Video rotation =====
@@ -472,13 +507,25 @@ async function init() {
 
   $('swap-btn').addEventListener('click', swapCameras);
 
+  $('controls-btn').addEventListener('click', () => {
+    $('controls-toggle').classList.toggle('open');
+  });
+
+  document.querySelectorAll('.layout-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyLayout(btn.dataset.layout));
+  });
+
+  $('face-overlay-minimize').addEventListener('click', () => {
+    const isMin = $('face-overlay').classList.toggle('minimized');
+    $('face-overlay-minimize').textContent = isMin ? '+' : '−';
+  });
+
   $('local-face-vid').addEventListener('click', () => toggleLocalCam(faceStream, 'local-face-vid'));
   $('local-tabletop-vid').addEventListener('click', () => toggleLocalCam(tabletopStream, 'local-tabletop-vid'));
 
-  $('local-face-rotate').addEventListener('click', () => rotateVideo('local-face'));
-  $('local-tabletop-rotate').addEventListener('click', () => rotateVideo('local-tabletop'));
   $('remote-face-rotate').addEventListener('click', () => rotateVideo('remote-face'));
   $('remote-tabletop-rotate').addEventListener('click', () => rotateVideo('remote-tabletop'));
+  $('local-tabletop-main-rotate').addEventListener('click', () => rotateVideo('local-tabletop-main'));
 
   $('local-mic-mute').addEventListener('click', toggleLocalMic);
 

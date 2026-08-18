@@ -76,52 +76,75 @@
   </div>
 
   <!-- ===== GAME ===== -->
-  <div id="game" class="hidden">
-    <div id="status-bar">
-      <div id="connection-status">
-        <div class="status-dot connecting"></div>
-        <span>Connecting&hellip;</span>
+  <div id="game" class="hidden" data-layout="default">
+
+    <!-- Floating accordion menu (replaces status/layout bars) -->
+    <div id="controls-toggle">
+      <button id="controls-btn" title="Menu">&#9776;</button>
+      <div id="controls-panel">
+        <div id="connection-status">
+          <div class="status-dot connecting"></div>
+          <span>Connecting&hellip;</span>
+        </div>
+        <div class="controls-sep"></div>
+        <button id="swap-btn" class="btn-secondary">&#8645; Swap Cameras</button>
+        <button id="leave-btn" class="btn-danger">Leave Game</button>
+        <div class="controls-sep"></div>
+        <div class="controls-section-label">Layout</div>
+        <div id="layout-presets">
+          <button class="layout-btn active" data-layout="default">Default</button>
+          <button class="layout-btn" data-layout="split-tb">Top / Bottom</button>
+          <button class="layout-btn" data-layout="split-lr">Side by Side</button>
+        </div>
       </div>
-      <button id="swap-btn" class="btn-secondary">&#8645; Swap Cameras</button>
-      <button id="leave-btn" class="btn-danger">Leave Game</button>
     </div>
 
-    <div id="main-view">
-      <video id="remote-tabletop" autoplay playsinline></video>
-      <div class="video-error hidden" id="remote-tabletop-error">Could not start video</div>
-      <div class="view-label">Opponent&rsquo;s Tabletop</div>
-      <button id="remote-tabletop-rotate" class="view-btn" title="Rotate">&#8635;</button>
+    <div id="video-area">
+      <div id="main-view">
+        <video id="remote-tabletop" autoplay playsinline></video>
+        <div class="video-error hidden" id="remote-tabletop-error">Could not start video</div>
+        <div class="view-label">Opponent&rsquo;s Tabletop</div>
+        <button id="remote-tabletop-rotate" class="view-btn" title="Rotate">&#8635;</button>
+      </div>
 
-      <!-- Draggable opponent face overlay -->
-      <div id="face-overlay">
-        <div class="overlay-header">&#8942; Opponent</div>
-        <div class="video-wrapper">
-          <video id="remote-face" autoplay playsinline></video>
-          <div class="video-error hidden" id="remote-face-error">Could not start video</div>
-        </div>
-        <div class="overlay-controls">
-          <span class="vol-icon">&#128266;</span>
-          <input type="range" id="remote-face-volume" class="vol-slider" min="0" max="1" step="0.05" value="1" title="Volume" />
-          <button id="remote-face-mute" class="icon-btn" title="Mute opponent audio">&#128266;</button>
-          <button id="remote-face-rotate" class="icon-btn" title="Rotate">&#8635;</button>
-        </div>
+      <div id="secondary-panel" class="hidden">
+        <video id="local-tabletop-main" autoplay playsinline muted></video>
+        <div class="video-error hidden" id="local-tabletop-main-error">No tabletop cam</div>
+        <div class="view-label">Your Tabletop</div>
+        <button id="local-tabletop-main-rotate" class="view-btn" title="Rotate">&#8635;</button>
+      </div>
+    </div><!-- #video-area -->
+
+    <!-- Face overlay is a direct child of #game so it always floats above both panels -->
+    <div id="face-overlay">
+      <div class="overlay-header">
+        <span>&#8942; Opponent</span>
+        <button id="face-overlay-minimize" class="overlay-minimize-btn" title="Minimize">&#8722;</button>
+      </div>
+      <div class="video-wrapper">
+        <video id="remote-face" autoplay playsinline></video>
+        <div class="video-error hidden" id="remote-face-error">Could not start video</div>
+      </div>
+      <div class="overlay-controls">
+        <span class="vol-icon">&#128266;</span>
+        <input type="range" id="remote-face-volume" class="vol-slider" min="0" max="1" step="0.05" value="1" title="Volume" />
+        <button id="remote-face-mute" class="icon-btn" title="Mute opponent audio">&#128266;</button>
+        <button id="remote-face-rotate" class="icon-btn" title="Rotate">&#8635;</button>
       </div>
     </div>
 
     <div id="local-previews">
-      <div class="preview-item">
+      <div class="preview-item" id="local-face-preview">
         <video id="local-face" autoplay playsinline muted></video>
         <div class="video-error hidden" id="local-face-error">Could not start video</div>
         <button id="local-face-vid" class="cam-btn cam-btn-left" title="Disable camera">&#128247;</button>
         <button id="local-mic-mute" class="cam-btn" title="Mute mic">&#127908;</button>
-        <button id="local-face-rotate" class="cam-btn cam-btn-bottom-right" title="Rotate">&#8635;</button>
         <span>Your Face</span>
       </div>
-      <div class="preview-item">
+      <div class="preview-item" id="local-tabletop-preview">
         <video id="local-tabletop" autoplay playsinline muted></video>
         <div class="video-error hidden" id="local-tabletop-error">Could not start video</div>
         <button id="local-tabletop-vid" class="cam-btn" title="Disable camera">&#128247;</button>
-        <button id="local-tabletop-rotate" class="cam-btn cam-btn-bottom-right" title="Rotate">&#8635;</button>
         <span>Your Tabletop</span>
       </div>
     </div>
