@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TabletopCamera</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== LOBBY ===== -->
+  <div id="lobby">
+    <div class="lobby-card">
+      <h1>TabletopCamera</h1>
+      <p class="subtitle">Play card games face-to-face, anywhere.</p>
+
+      <div class="camera-setup">
+        <h3>Camera Setup</h3>
+        <div id="cam-permission">
+          <p>Grant camera access to configure your streams.</p>
+          <button id="cam-access-btn" class="btn-secondary">Allow Cameras</button>
+        </div>
+        <div id="cam-selects" class="hidden">
+          <div class="form-group">
+            <label>Face Camera</label>
+            <select id="face-cam-select"></select>
+          </div>
+          <div class="form-group">
+            <label>Tabletop Camera</label>
+            <select id="tabletop-cam-select"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="create">Create Room</button>
+        <button class="tab" data-tab="join">Join Room</button>
+      </div>
+
+      <div id="tab-create" class="tab-content active">
+        <div class="form-group">
+          <label>Room Password</label>
+          <input type="password" id="create-password" placeholder="Set a room password" autocomplete="new-password" />
+        </div>
+        <button id="create-btn" class="btn-primary">Create Room</button>
+      </div>
+
+      <div id="tab-join" class="tab-content">
+        <div class="form-group">
+          <label>Room Code</label>
+          <input type="text" id="join-code" placeholder="XXXX" maxlength="4" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="join-password" placeholder="Room password" autocomplete="off" />
+        </div>
+        <button id="join-btn" class="btn-primary">Join Room</button>
+      </div>
+
+      <div id="lobby-status" class="status-msg"></div>
+    </div>
+  </div>
+
+  <!-- ===== WAITING ===== -->
+  <div id="waiting" class="hidden">
+    <div class="waiting-card">
+      <h2>Room Created</h2>
+      <p>Share this code with your opponent:</p>
+      <div class="room-code" id="room-code-display"></div>
+      <p class="waiting-msg">
+        <span class="spinner"></span>
+        Waiting for opponent to join&hellip;
+      </p>
+    </div>
+  </div>
+
+  <!-- ===== GAME ===== -->
+  <div id="game" class="hidden">
+    <div id="status-bar">
+      <div id="connection-status">
+        <div class="status-dot connecting"></div>
+        <span>Connecting&hellip;</span>
+      </div>
+      <button id="swap-btn" class="btn-secondary">&#8645; Swap Cameras</button>
+      <button id="leave-btn" class="btn-danger">Leave Game</button>
+    </div>
+
+    <div id="main-view">
+      <video id="remote-tabletop" autoplay playsinline></video>
+      <div class="video-error hidden" id="remote-tabletop-error">Could not start video</div>
+      <div class="view-label">Opponent&rsquo;s Tabletop</div>
+      <button id="remote-tabletop-rotate" class="view-btn" title="Rotate">&#8635;</button>
+
+      <!-- Draggable opponent face overlay -->
+      <div id="face-overlay">
+        <div class="overlay-header">&#8942; Opponent</div>
+        <div class="video-wrapper">
+          <video id="remote-face" autoplay playsinline></video>
+          <div class="video-error hidden" id="remote-face-error">Could not start video</div>
+        </div>
+        <div class="overlay-controls">
+          <span class="vol-icon">&#128266;</span>
+          <input type="range" id="remote-face-volume" class="vol-slider" min="0" max="1" step="0.05" value="1" title="Volume" />
+          <button id="remote-face-mute" class="icon-btn" title="Mute opponent audio">&#128266;</button>
+          <button id="remote-face-rotate" class="icon-btn" title="Rotate">&#8635;</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="local-previews">
+      <div class="preview-item">
+        <video id="local-face" autoplay playsinline muted></video>
+        <div class="video-error hidden" id="local-face-error">Could not start video</div>
+        <button id="local-face-vid" class="cam-btn cam-btn-left" title="Disable camera">&#128247;</button>
+        <button id="local-mic-mute" class="cam-btn" title="Mute mic">&#127908;</button>
+        <button id="local-face-rotate" class="cam-btn cam-btn-bottom-right" title="Rotate">&#8635;</button>
+        <span>Your Face</span>
+      </div>
+      <div class="preview-item">
+        <video id="local-tabletop" autoplay playsinline muted></video>
+        <div class="video-error hidden" id="local-tabletop-error">Could not start video</div>
+        <button id="local-tabletop-vid" class="cam-btn" title="Disable camera">&#128247;</button>
+        <button id="local-tabletop-rotate" class="cam-btn cam-btn-bottom-right" title="Rotate">&#8635;</button>
+        <span>Your Tabletop</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "tabletop-camera",
+  "version": "1.0.0",
+  "description": "P2P tabletop card game video streaming",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
