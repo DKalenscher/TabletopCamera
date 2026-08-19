@@ -33,6 +33,11 @@
         </div>
       </div>
 
+      <div class="form-group name-group">
+        <label for="display-name">Display Name</label>
+        <input type="text" id="display-name" placeholder="Your name" maxlength="32" autocomplete="nickname" spellcheck="false" />
+      </div>
+
       <div class="tabs">
         <button class="tab active" data-tab="create">Create Room</button>
         <button class="tab" data-tab="join">Join Room</button>
@@ -62,19 +67,6 @@
     </div>
   </div>
 
-  <!-- ===== WAITING ===== -->
-  <div id="waiting" class="hidden">
-    <div class="waiting-card">
-      <h2>Room Created</h2>
-      <p>Share this code with your opponent:</p>
-      <div class="room-code" id="room-code-display"></div>
-      <p class="waiting-msg">
-        <span class="spinner"></span>
-        Waiting for opponent to join&hellip;
-      </p>
-    </div>
-  </div>
-
   <!-- ===== GAME ===== -->
   <div id="game" class="hidden" data-layout="default">
 
@@ -86,6 +78,7 @@
           <div class="status-dot connecting"></div>
           <span>Connecting&hellip;</span>
         </div>
+        <div id="game-room-code">Room&nbsp;<span id="room-code-game-value">----</span></div>
         <div class="controls-sep"></div>
         <button id="swap-btn" class="btn-secondary">&#8645; Swap Cameras</button>
         <button id="leave-btn" class="btn-danger">Leave Game</button>
@@ -158,12 +151,27 @@
           </div>
         </div>
       </div>
+      <!-- Chat box — lives in video-area so it floats above the video, below the preview bar -->
+      <div id="chat-box" class="collapsed">
+        <div id="chat-header">
+          <span id="chat-title">&#128172; Chat</span>
+          <span id="chat-unread" class="hidden">&#9679;</span>
+          <button id="chat-toggle-btn" title="Expand chat">&#9650;</button>
+        </div>
+        <div id="chat-body">
+          <div id="chat-messages"></div>
+          <div id="chat-input-row">
+            <input type="text" id="chat-input" placeholder="Message…" maxlength="500" autocomplete="off" />
+            <button id="chat-send-btn" title="Send">&#10148;</button>
+          </div>
+        </div>
+      </div>
     </div><!-- #video-area -->
 
     <!-- Face overlay is a direct child of #game so it always floats above both panels -->
     <div id="face-overlay">
       <div class="overlay-header">
-        <span>&#8942; Opponent</span>
+        <span id="face-overlay-title">&#8942; Opponent</span>
         <button id="face-overlay-minimize" class="overlay-minimize-btn" title="Minimize">&#8722;</button>
       </div>
       <div class="video-wrapper">

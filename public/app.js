@@ -10,6 +10,11 @@ let faceVideoSender = null;    // RTCRtpSender for face video — used for mid-g
 let tabletopVideoSender = null;
 let camsReady = false;
 let isInitiator = false;
+let isHost = false;
+let currentRoomCode = null;
+let myName = 'Player';
+let opponentName = 'Opponent';
+const NAME_STORAGE_KEY = 'tc-display-name';
 let remoteStreamMapping = null; // { faceStreamId, tabletopStreamId }
 const remoteStreams = {};       // streamId -> MediaStream
 let currentLayout = 'default';
@@ -72,18 +77,30 @@ function wsSend(msg) {
 // ===== Signaling =====
 async function handleSignal(msg) {
   switch (msg.type) {
-    case 'ROOM_CREATED':
-      hide('lobby');
-      show('waiting');
-      $('room-code-display').textContent = msg.roomCode;
-      break;
-
-    case 'JOIN_SUCCESS':
-      await startGame(false).catch(e => { alert(`Failed to start game: ${e.message}`); location.reload(); });
+    case 'ROOM_JOINED':
+      // Joiner learns the host's name here; host already knows their own
+      if (!msg.isHost && msg.hostName) {
+        opponentName = msg.hostName;
+        $('face-overlay-title').textContent = `⋮ ${msg.hostName}`;
+      }
+      await enterGame(msg.isHost, msg.roomCode)
+        .catch(e => { alert(`Failed to start game: ${e.message}`); location.reload(); });
       break;
 
     case 'PEER_JOINED':
-      await startGame(true).catch(e => { alert(`Failed to start game: ${e.message}`); location.reload(); });
+      // Host receives this when a joiner connects — learn their name, start WebRTC
+      opponentName = msg.name || 'Opponent';
+      $('face-overlay-title').textContent = `⋮ ${opponentName}`;
+      await startWebRTC(true).catch(e => console.error('WebRTC start failed:', e));
+      break;
+
+    case 'HOST_TRANSFERRED':
+      // We were the joiner; original host left. We are now the host.
+      isHost = true;
+      isInitiator = true;
+      currentRoomCode = msg.roomCode;
+      $('room-code-game-value').textContent = msg.roomCode;
+      peerDisconnected();
       break;
 
     case 'OFFER':
@@ -101,8 +118,12 @@ async function handleSignal(msg) {
       break;
 
     case 'PEER_DISCONNECTED':
-      alert('Your opponent has disconnected.');
-      location.reload();
+      peerDisconnected();
+      break;
+
+    case 'CHAT':
+      if (msg.system) appendSystemMessage(msg.text);
+      else appendChatMessage(msg.text, msg.name || opponentName, false);
       break;
 
     case 'ERROR':
@@ -212,25 +233,60 @@ async function populateGameCameraSelects() {
 }
 
 // ===== Game setup =====
-async function startGame(initiator) {
-  isInitiator = initiator;
+
+// Enter the game UI immediately. Called for both host and joiner on ROOM_JOINED.
+// WebRTC is not started here — it waits until a peer is present.
+async function enterGame(host, roomCode) {
+  isHost = host;
+  isInitiator = host;
+  currentRoomCode = roomCode;
+
   hide('lobby');
-  hide('waiting');
   show('game');
-  setConnectionStatus('connecting');
+  $('room-code-game-value').textContent = roomCode;
+  setConnectionStatus('waiting');
+  showVideoError('remote-tabletop', 'Waiting for opponent…');
+  showVideoError('remote-face', 'Waiting for opponent…');
 
   await startLocalStreams();
   populateGameCameraSelects();
+
+  // Joiner sets up the PC on-demand in handleOffer(); nothing more to do here.
+}
+
+// Start WebRTC negotiation — called when a peer is present.
+// Initiator (host) creates offer; non-initiator waits for offer via handleOffer().
+async function startWebRTC(initiator) {
+  isInitiator = initiator;
   setupPeerConnection();
 
-  if (isInitiator) {
+  if (initiator) {
     dc = pc.createDataChannel('meta');
     setupDataChannel();
-
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     wsSend({ type: 'OFFER', sdp: offer });
   }
+}
+
+// Tear down the peer connection and return to "waiting" state in-game.
+// The local cameras and game UI remain; the room stays open on the server.
+function peerDisconnected() {
+  if (pc) { try { pc.close(); } catch {} pc = null; }
+  dc = null;
+  faceVideoSender = null;
+  tabletopVideoSender = null;
+  remoteStreamMapping = null;
+  Object.keys(remoteStreams).forEach(k => delete remoteStreams[k]);
+
+  $('remote-face').srcObject = null;
+  $('remote-tabletop').srcObject = null;
+  showVideoError('remote-tabletop', 'Waiting for opponent…');
+  showVideoError('remote-face', 'Waiting for opponent…');
+
+  opponentName = 'Opponent';
+  $('face-overlay-title').textContent = '⋮ Opponent';
+  setConnectionStatus('waiting');
 }
 
 async function startLocalStreams() {
@@ -332,6 +388,8 @@ function setupPeerConnection() {
 }
 
 async function handleOffer(sdp) {
+  // Joiner's PC is created on-demand here, avoiding any timing race with enterGame()
+  if (!pc) setupPeerConnection();
   await pc.setRemoteDescription(new RTCSessionDescription(sdp));
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
@@ -340,7 +398,6 @@ async function handleOffer(sdp) {
 
 function setupDataChannel() {
   dc.onopen = () => {
-    // null means that stream failed to start on our end
     dc.send(JSON.stringify({
       type: 'STREAM_MAPPING',
       faceStreamId: faceStream?.id ?? null,
@@ -603,6 +660,47 @@ function setupCamControls(groupId) {
   });
 }
 
+// ===== Chat =====
+function appendSystemMessage(text) {
+  const msgs = $('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg system';
+  div.textContent = text;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  if ($('chat-box').classList.contains('collapsed')) show('chat-unread');
+}
+
+function appendChatMessage(text, senderName, mine) {
+  const msgs = $('chat-messages');
+  const div = document.createElement('div');
+  div.className = `chat-msg ${mine ? 'mine' : 'theirs'}`;
+
+  const name = document.createElement('div');
+  name.className = 'chat-msg-name';
+  name.textContent = senderName;
+  div.appendChild(name);
+
+  const body = document.createTextNode(text);
+  div.appendChild(body);
+
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  if ($('chat-box').classList.contains('collapsed')) {
+    show('chat-unread');
+  }
+}
+
+function sendChat() {
+  const input = $('chat-input');
+  const text = input.value.trim();
+  if (!text || ws?.readyState !== WebSocket.OPEN) return;
+  wsSend({ type: 'CHAT', text });
+  appendChatMessage(text, myName, true);
+  input.value = '';
+}
+
 // ===== Camera video toggle =====
 function toggleLocalCam(stream, btnId) {
   if (!stream) return;
@@ -646,6 +744,9 @@ function setConnectionStatus(state) {
   if (state === 'connected') {
     dot.classList.add('connected');
     label.textContent = 'Connected';
+  } else if (state === 'waiting') {
+    dot.classList.add('connecting');
+    label.textContent = 'Waiting for opponent…';
   } else if (['connecting', 'new', 'checking'].includes(state)) {
     dot.classList.add('connecting');
     label.textContent = 'Connecting…';
@@ -714,6 +815,13 @@ async function init() {
     });
   });
 
+  // Display name — restore from localStorage, save on change
+  const savedName = localStorage.getItem(NAME_STORAGE_KEY);
+  if (savedName) $('display-name').value = savedName;
+  $('display-name').addEventListener('input', e => {
+    localStorage.setItem(NAME_STORAGE_KEY, e.target.value.trim());
+  });
+
   tryAutoPopulateCameras();
 
   $('cam-access-btn').addEventListener('click', requestCameraAccess);
@@ -722,19 +830,25 @@ async function init() {
   $('tabletop-cam-select').addEventListener('change', saveCameraSelections);
 
   $('create-btn').addEventListener('click', () => {
+    const name = $('display-name').value.trim();
     const password = $('create-password').value.trim();
+    if (!name) return showLobbyError('Please enter a display name.');
     if (!password) return showLobbyError('Please enter a room password.');
+    myName = name;
     clearLobbyError();
-    wsSend({ type: 'CREATE_ROOM', password });
+    wsSend({ type: 'CREATE_ROOM', password, name });
   });
 
   $('join-btn').addEventListener('click', () => {
+    const name = $('display-name').value.trim();
     const code = $('join-code').value.trim().toUpperCase();
     const password = $('join-password').value.trim();
+    if (!name) return showLobbyError('Please enter a display name.');
     if (code.length !== 4) return showLobbyError('Enter the 4-character room code.');
     if (!password) return showLobbyError('Please enter the room password.');
+    myName = name;
     clearLobbyError();
-    wsSend({ type: 'JOIN_ROOM', roomCode: code, password });
+    wsSend({ type: 'JOIN_ROOM', roomCode: code, password, name });
   });
 
   $('join-code').addEventListener('input', e => {
@@ -820,6 +934,26 @@ async function init() {
   $('leave-btn').addEventListener('click', () => {
     if (confirm('Leave the game?')) location.reload();
   });
+
+  // Chat
+  $('chat-header').addEventListener('click', () => {
+    const box = $('chat-box');
+    const collapsed = box.classList.toggle('collapsed');
+    $('chat-toggle-btn').textContent = collapsed ? '▴' : '▾';
+    if (!collapsed) {
+      hide('chat-unread');
+      $('chat-input').focus();
+    }
+  });
+
+  $('chat-send-btn').addEventListener('click', sendChat);
+
+  $('chat-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  });
+
+  // Prevent header click from firing when clicking inside the input row
+  $('chat-input-row').addEventListener('click', e => e.stopPropagation());
 
   makeDraggable($('face-overlay'));
 }
