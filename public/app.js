@@ -398,6 +398,13 @@ function syncSecondaryPanel() {
   applyVideoTransform('tabletop-cam');
 }
 
+function resetPanelSizes() {
+  const mv = $('main-view');
+  mv.style.flexBasis = '';
+  mv.style.flexGrow  = '';
+  mv.style.flexShrink = '';
+}
+
 function applyLayout(layout) {
   currentLayout = layout;
   $('game').dataset.layout = layout;
@@ -408,7 +415,10 @@ function applyLayout(layout) {
 
   const isSplit = layout !== 'default';
   $('secondary-panel').classList.toggle('hidden', !isSplit);
+  $('split-divider').classList.toggle('hidden', !isSplit);
   $('local-tabletop-preview').classList.toggle('hidden', isSplit);
+
+  resetPanelSizes(); // always reset when layout is applied or re-selected
 
   if (isSplit) {
     syncSecondaryPanel();
@@ -755,6 +765,35 @@ async function init() {
   setupCamControls('local-tabletop-main-controls');
 
   $('apply-cams-btn').addEventListener('click', applyGameCameras);
+
+  // Draggable split divider
+  $('split-divider').addEventListener('mousedown', e => {
+    e.preventDefault();
+    const divider = $('split-divider');
+    divider.classList.add('dragging');
+    const isTB = currentLayout === 'split-tb';
+    const mainView = $('main-view');
+
+    const onMove = e => {
+      const rect = $('video-area').getBoundingClientRect();
+      const areaSize  = isTB ? rect.height : rect.width;
+      const areaStart = isTB ? rect.top    : rect.left;
+      const pos = isTB ? e.clientY : e.clientX;
+      const newSize = Math.max(areaSize * 0.1, Math.min(areaSize * 0.9, pos - areaStart));
+      mainView.style.flexBasis  = `${newSize}px`;
+      mainView.style.flexGrow   = '0';
+      mainView.style.flexShrink = '0';
+    };
+
+    const onUp = () => {
+      divider.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
 
   $('local-previews-toggle').addEventListener('click', () => {
     const collapsed = $('local-previews').classList.toggle('collapsed');
