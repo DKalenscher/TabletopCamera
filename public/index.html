@@ -30,6 +30,10 @@
             <label>Tabletop Camera</label>
             <select id="tabletop-cam-select"></select>
           </div>
+          <div class="form-group">
+            <label>Microphone</label>
+            <select id="mic-select"></select>
+          </div>
         </div>
       </div>
 
@@ -79,8 +83,12 @@
           <span>Connecting&hellip;</span>
         </div>
         <div id="game-room-code">Room&nbsp;<span id="room-code-game-value">----</span></div>
+        <div id="game-room-password">
+          <span class="grp-label">Password</span>
+          <span id="room-password-value">••••</span>
+          <button id="room-password-toggle" title="Show password"></button>
+        </div>
         <div class="controls-sep"></div>
-        <button id="swap-btn" class="btn-secondary">&#8645; Swap Cameras</button>
         <button id="leave-btn" class="btn-danger">Leave Game</button>
         <div class="controls-sep"></div>
         <div class="controls-section-label">Layout</div>
@@ -90,7 +98,7 @@
           <button class="layout-btn" data-layout="split-lr">Side by Side</button>
         </div>
         <div class="controls-sep"></div>
-        <div class="controls-section-label">Cameras</div>
+        <div class="controls-section-label">Inputs</div>
         <div class="game-cam-row">
           <span class="game-cam-label">Face</span>
           <select id="game-face-cam-select" class="game-cam-select"></select>
@@ -99,7 +107,10 @@
           <span class="game-cam-label">Tabletop</span>
           <select id="game-tabletop-cam-select" class="game-cam-select"></select>
         </div>
-        <button id="apply-cams-btn" class="btn-secondary">Apply Cameras</button>
+        <div class="game-cam-row">
+          <span class="game-cam-label">Mic</span>
+          <select id="game-mic-select" class="game-cam-select"></select>
+        </div>
       </div>
     </div>
 
@@ -107,7 +118,7 @@
       <div id="main-view">
         <video id="remote-tabletop" autoplay playsinline></video>
         <div class="video-error hidden" id="remote-tabletop-error">Could not start video</div>
-        <div class="view-label">Opponent&rsquo;s Tabletop</div>
+        <div class="view-label" id="remote-tabletop-label">Opponent&rsquo;s Tabletop</div>
         <div class="cam-controls" id="remote-tabletop-controls">
           <button class="cam-controls-toggle" title="Camera Controls">&#9881;</button>
           <div class="cam-controls-panel hidden">
@@ -156,6 +167,8 @@
         <div id="chat-header">
           <span id="chat-title">&#128172; Chat</span>
           <span id="chat-unread" class="hidden">&#9679;</span>
+          <button id="chat-font-minus" title="Decrease font size">&#8722;</button>
+          <button id="chat-font-plus"  title="Increase font size">&#43;</button>
           <button id="chat-toggle-btn" title="Expand chat">&#9650;</button>
         </div>
         <div id="chat-body">
@@ -178,6 +191,7 @@
         <video id="remote-face" autoplay playsinline></video>
         <div class="video-error hidden" id="remote-face-error">Could not start video</div>
       </div>
+      <div class="overlay-resize-handle" id="face-overlay-resize"></div>
       <div class="overlay-controls">
         <span class="vol-icon">&#128266;</span>
         <input type="range" id="remote-face-volume" class="vol-slider" min="0" max="1" step="0.05" value="1" title="Volume" />
@@ -191,14 +205,14 @@
       <div class="preview-item" id="local-face-preview">
         <video id="local-face" autoplay playsinline muted></video>
         <div class="video-error hidden" id="local-face-error">Could not start video</div>
-        <button id="local-face-vid" class="cam-btn cam-btn-left" title="Disable camera">&#128247;</button>
+        <button id="local-face-vid" class="cam-btn cam-btn-left" title="Disable camera">&#127909;</button>
         <button id="local-mic-mute" class="cam-btn" title="Mute mic">&#127908;</button>
         <span>Your Face</span>
       </div>
       <div class="preview-item" id="local-tabletop-preview">
         <video id="local-tabletop" autoplay playsinline muted></video>
         <div class="video-error hidden" id="local-tabletop-error">Could not start video</div>
-        <button id="local-tabletop-vid" class="cam-btn" title="Disable camera">&#128247;</button>
+        <button id="local-tabletop-vid" class="cam-btn" title="Disable camera">&#127909;</button>
         <span>Your Tabletop</span>
       </div>
     </div>

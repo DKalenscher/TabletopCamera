@@ -6,14 +6,18 @@ let pc = null;
 let dc = null;
 let faceStream = null;
 let tabletopStream = null;
-let faceVideoSender = null;    // RTCRtpSender for face video — used for mid-game replaceTrack()
+let micStream = null;
+let faceVideoSender = null;
 let tabletopVideoSender = null;
+let micSender = null;
+let micMuted = false;
 let camsReady = false;
 let isInitiator = false;
 let isHost = false;
 let currentRoomCode = null;
 let myName = 'Player';
 let opponentName = 'Opponent';
+let currentRoomPassword = null;
 const NAME_STORAGE_KEY = 'tc-display-name';
 let remoteStreamMapping = null; // { faceStreamId, tabletopStreamId }
 const remoteStreams = {};       // streamId -> MediaStream
@@ -36,6 +40,57 @@ const ICE_SERVERS = {
 const $ = id => document.getElementById(id);
 const show = id => $(id).classList.remove('hidden');
 const hide = id => $(id).classList.add('hidden');
+
+function showWaitingOverlay() {
+  const video = $('remote-tabletop');
+  const overlay = $('remote-tabletop-error');
+  if (video) video.style.visibility = 'hidden';
+  if (!overlay) return;
+  overlay.innerHTML = '';
+
+  const waiting = document.createElement('div');
+  waiting.className = 'waiting-overlay-content';
+
+  const label = document.createElement('div');
+  label.className = 'waiting-label';
+  label.textContent = 'Waiting for opponent';
+  waiting.appendChild(label);
+
+  if (currentRoomCode) {
+    const shareLabel = document.createElement('div');
+    shareLabel.className = 'waiting-share-label';
+    shareLabel.textContent = 'Share this room code:';
+    waiting.appendChild(shareLabel);
+
+    const code = document.createElement('div');
+    code.className = 'waiting-room-code';
+    code.textContent = currentRoomCode;
+    waiting.appendChild(code);
+  }
+
+  overlay.appendChild(waiting);
+  overlay.classList.remove('hidden');
+}
+
+function showPeerNoTabletop() {
+  const video = $('remote-tabletop');
+  const overlay = $('remote-tabletop-error');
+  if (video) video.style.visibility = 'hidden';
+  if (!overlay) return;
+  overlay.innerHTML = '';
+  const content = document.createElement('div');
+  content.className = 'peer-no-cam-content';
+  const name = document.createElement('div');
+  name.className = 'peer-no-cam-name';
+  name.textContent = opponentName;
+  const msg = document.createElement('div');
+  msg.className = 'peer-no-cam-msg';
+  msg.textContent = 'No tabletop camera';
+  content.appendChild(name);
+  content.appendChild(msg);
+  overlay.appendChild(content);
+  overlay.classList.remove('hidden');
+}
 
 function showVideoError(videoId, msg = 'Could not start video') {
   const video = $(videoId);
@@ -79,18 +134,13 @@ async function handleSignal(msg) {
   switch (msg.type) {
     case 'ROOM_JOINED':
       // Joiner learns the host's name here; host already knows their own
-      if (!msg.isHost && msg.hostName) {
-        opponentName = msg.hostName;
-        $('face-overlay-title').textContent = `⋮ ${msg.hostName}`;
-      }
-      await enterGame(msg.isHost, msg.roomCode)
-        .catch(e => { alert(`Failed to start game: ${e.message}`); location.reload(); });
+      if (!msg.isHost && msg.hostName) setOpponentName(msg.hostName);
+      enterGame(msg.isHost, msg.roomCode);
       break;
 
     case 'PEER_JOINED':
       // Host receives this when a joiner connects — learn their name, start WebRTC
-      opponentName = msg.name || 'Opponent';
-      $('face-overlay-title').textContent = `⋮ ${opponentName}`;
+      setOpponentName(msg.name || 'Opponent');
       await startWebRTC(true).catch(e => console.error('WebRTC start failed:', e));
       break;
 
@@ -139,6 +189,7 @@ function saveCameraSelections() {
   localStorage.setItem(CAM_STORAGE_KEY, JSON.stringify({
     faceDeviceId: $('face-cam-select').value,
     tabletopDeviceId: $('tabletop-cam-select').value,
+    micDeviceId: $('mic-select').value,
   }));
 }
 
@@ -148,8 +199,10 @@ function restoreCameraSelections() {
     if (!saved) return;
     const faceOpt = $('face-cam-select').querySelector(`option[value="${saved.faceDeviceId}"]`);
     const tabOpt  = $('tabletop-cam-select').querySelector(`option[value="${saved.tabletopDeviceId}"]`);
+    const micOpt  = $('mic-select').querySelector(`option[value="${saved.micDeviceId}"]`);
     if (faceOpt) $('face-cam-select').value = saved.faceDeviceId;
     if (tabOpt)  $('tabletop-cam-select').value = saved.tabletopDeviceId;
+    if (micOpt)  $('mic-select').value = saved.micDeviceId;
   } catch {}
 }
 
@@ -205,38 +258,61 @@ function buildCameraOptions(sel, videoDevices) {
   });
 }
 
+function buildMicOptions(sel, audioDevices) {
+  sel.innerHTML = '';
+  const disabledOpt = document.createElement('option');
+  disabledOpt.value = 'disabled';
+  disabledOpt.textContent = '— Disabled —';
+  sel.appendChild(disabledOpt);
+  audioDevices.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = d.deviceId;
+    opt.textContent = d.label || `Microphone ${i + 1}`;
+    sel.appendChild(opt);
+  });
+}
+
 async function populateCameraSelects() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   const videoDevices = devices.filter(d => d.kind === 'videoinput');
+  const audioDevices = devices.filter(d => d.kind === 'audioinput');
 
   ['face-cam-select', 'tabletop-cam-select'].forEach(id => buildCameraOptions($(id), videoDevices));
+  buildMicOptions($('mic-select'), audioDevices);
 
-  // Defaults: face = first cam, tabletop = second (if available)
+  // Defaults: face = first cam, tabletop = second (if available), mic = first audio
   if (videoDevices.length > 0) $('face-cam-select').value = videoDevices[0].deviceId;
   if (videoDevices.length > 1) $('tabletop-cam-select').value = videoDevices[1].deviceId;
   else if (videoDevices.length > 0) $('tabletop-cam-select').value = videoDevices[0].deviceId;
+  if (audioDevices.length > 0) $('mic-select').value = audioDevices[0].deviceId;
 }
 
 async function populateGameCameraSelects() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   const videoDevices = devices.filter(d => d.kind === 'videoinput');
+  const audioDevices = devices.filter(d => d.kind === 'audioinput');
 
   ['game-face-cam-select', 'game-tabletop-cam-select'].forEach(id => buildCameraOptions($(id), videoDevices));
+  buildMicOptions($('game-mic-select'), audioDevices);
 
   // Set to whatever is currently streaming (or disabled)
   const faceId = faceStream?.getVideoTracks()[0]?.getSettings().deviceId ?? 'disabled';
   const tabId  = tabletopStream?.getVideoTracks()[0]?.getSettings().deviceId ?? 'disabled';
+  const micId  = micStream?.getAudioTracks()[0]?.getSettings().deviceId ?? 'disabled';
   if ($('game-face-cam-select').querySelector(`option[value="${faceId}"]`))
     $('game-face-cam-select').value = faceId;
   if ($('game-tabletop-cam-select').querySelector(`option[value="${tabId}"]`))
     $('game-tabletop-cam-select').value = tabId;
+  if ($('game-mic-select').querySelector(`option[value="${micId}"]`))
+    $('game-mic-select').value = micId;
 }
 
 // ===== Game setup =====
 
 // Enter the game UI immediately. Called for both host and joiner on ROOM_JOINED.
+// Streams are already open (started before wsSend in the button handlers).
 // WebRTC is not started here — it waits until a peer is present.
-async function enterGame(host, roomCode) {
+function enterGame(host, roomCode) {
   isHost = host;
   isInitiator = host;
   currentRoomCode = roomCode;
@@ -245,28 +321,10 @@ async function enterGame(host, roomCode) {
   show('game');
   $('room-code-game-value').textContent = roomCode;
   setConnectionStatus('waiting');
-  showVideoError('remote-tabletop', 'Waiting for opponent…');
+  showWaitingOverlay();
   showVideoError('remote-face', 'Waiting for opponent…');
 
-  await startLocalStreams();
   populateGameCameraSelects();
-
-  // Joiner sets up the PC on-demand in handleOffer(); nothing more to do here.
-}
-
-// Start WebRTC negotiation — called when a peer is present.
-// Initiator (host) creates offer; non-initiator waits for offer via handleOffer().
-async function startWebRTC(initiator) {
-  isInitiator = initiator;
-  setupPeerConnection();
-
-  if (initiator) {
-    dc = pc.createDataChannel('meta');
-    setupDataChannel();
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    wsSend({ type: 'OFFER', sdp: offer });
-  }
 }
 
 // Tear down the peer connection and return to "waiting" state in-game.
@@ -276,16 +334,16 @@ function peerDisconnected() {
   dc = null;
   faceVideoSender = null;
   tabletopVideoSender = null;
+  micSender = null;
   remoteStreamMapping = null;
   Object.keys(remoteStreams).forEach(k => delete remoteStreams[k]);
 
   $('remote-face').srcObject = null;
   $('remote-tabletop').srcObject = null;
-  showVideoError('remote-tabletop', 'Waiting for opponent…');
+  showWaitingOverlay();
   showVideoError('remote-face', 'Waiting for opponent…');
 
-  opponentName = 'Opponent';
-  $('face-overlay-title').textContent = '⋮ Opponent';
+  setOpponentName('Opponent');
   setConnectionStatus('waiting');
 }
 
@@ -296,27 +354,21 @@ async function startLocalStreams() {
     return;
   }
 
-  const faceCamId = $('face-cam-select').value;
+  const faceCamId    = $('face-cam-select').value;
   const tabletopCamId = $('tabletop-cam-select').value;
+  const micId        = $('mic-select').value;
 
   // Each stream attempt is independent — failure shows an overlay but never blocks the game
 
-  // Face stream
+  // Face: video only
   if (faceCamId === 'disabled') {
     showVideoError('local-face', 'Disabled');
     faceStream = null;
   } else {
     try {
-      try {
-        faceStream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: faceCamId } },
-          audio: true,
-        });
-      } catch {
-        faceStream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: faceCamId } },
-        });
-      }
+      faceStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: faceCamId } },
+      });
       clearVideoError('local-face');
       $('local-face').srcObject = faceStream;
     } catch (e) {
@@ -326,14 +378,14 @@ async function startLocalStreams() {
     }
   }
 
-  // Tabletop stream
+  // Tabletop: video only
   if (tabletopCamId === 'disabled') {
     showVideoError('local-tabletop', 'Disabled');
     tabletopStream = null;
   } else {
     try {
       if (tabletopCamId === faceCamId && faceStream) {
-        // Same device selected — clone the track so each stream has a distinct ID
+        // Same device — clone so each stream has a distinct ID
         tabletopStream = new MediaStream([faceStream.getVideoTracks()[0].clone()]);
       } else {
         tabletopStream = await navigator.mediaDevices.getUserMedia({
@@ -348,10 +400,26 @@ async function startLocalStreams() {
       showVideoError('local-tabletop');
     }
   }
+
+  // Microphone: audio only, independent of cameras
+  micStream = null;
+  if (micId !== 'disabled') {
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: micId } },
+      });
+    } catch (e) {
+      console.warn('Mic failed:', e.message);
+    }
+  }
 }
 
 // ===== WebRTC =====
 function setupPeerConnection() {
+  const faceTracks = faceStream ? faceStream.getTracks().length : 0;
+  const tabTracks = tabletopStream ? tabletopStream.getTracks().length : 0;
+  console.log(`[WebRTC] setupPeerConnection — faceStream tracks: ${faceTracks}, tabletopStream tracks: ${tabTracks}`);
+
   pc = new RTCPeerConnection(ICE_SERVERS);
 
   // Add our tracks — track video senders so we can replaceTrack() mid-game
@@ -360,16 +428,47 @@ function setupPeerConnection() {
   if (faceStream) faceStream.getTracks().forEach(t => {
     const s = pc.addTrack(t, faceStream);
     if (t.kind === 'video') faceVideoSender = s;
+    console.log(`[WebRTC] added local face track: ${t.kind} (${t.label})`);
   });
   if (tabletopStream) tabletopStream.getTracks().forEach(t => {
     const s = pc.addTrack(t, tabletopStream);
     if (t.kind === 'video') tabletopVideoSender = s;
+    console.log(`[WebRTC] added local tabletop track: ${t.kind} (${t.label})`);
   });
+
+  // Mic audio — bundled with face stream so the remote hears it through the face video element.
+  // Falls back to tabletop stream if face is disabled.
+  micSender = null;
+  if (micStream) {
+    const audioTrack = micStream.getAudioTracks()[0];
+    const assocStream = faceStream || tabletopStream;
+    if (audioTrack && assocStream) {
+      micSender = pc.addTrack(audioTrack, assocStream);
+      console.log(`[WebRTC] added mic audio (${audioTrack.label})`);
+    }
+  }
 
   pc.ontrack = e => {
     const stream = e.streams[0];
+    console.log(`[WebRTC] ontrack — kind: ${e.track.kind}, streamId: ${stream?.id}`);
+    if (!stream) return;
     remoteStreams[stream.id] = stream;
     applyRemoteStreams();
+
+    if (e.track.kind === 'video') {
+      e.track.onmute = () => {
+        const videoId = remoteVideoIdForStream(stream.id);
+        if (!videoId) return;
+        const vid = $(videoId);
+        if (vid.srcObject === stream) showVideoError(videoId, 'Camera off');
+      };
+      e.track.onunmute = () => {
+        applyRemoteStreams();
+      };
+      e.track.onended = () => {
+        if (pc) peerDisconnected();
+      };
+    }
   };
 
   pc.onicecandidate = e => {
@@ -377,7 +476,13 @@ function setupPeerConnection() {
   };
 
   pc.onconnectionstatechange = () => {
+    console.log(`[WebRTC] connectionState: ${pc.connectionState}`);
     setConnectionStatus(pc.connectionState);
+    if (pc.connectionState === 'failed') peerDisconnected();
+  };
+
+  pc.onicegatheringstatechange = () => {
+    console.log(`[WebRTC] iceGatheringState: ${pc.iceGatheringState}`);
   };
 
   // Joiner receives the data channel created by the host
@@ -387,12 +492,28 @@ function setupPeerConnection() {
   };
 }
 
+async function startWebRTC(initiator) {
+  console.log(`[WebRTC] startWebRTC — initiator: ${initiator}`);
+  isInitiator = initiator;
+  setupPeerConnection();
+
+  if (initiator) {
+    dc = pc.createDataChannel('meta');
+    setupDataChannel();
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    console.log('[WebRTC] sending OFFER');
+    wsSend({ type: 'OFFER', sdp: offer });
+  }
+}
+
 async function handleOffer(sdp) {
-  // Joiner's PC is created on-demand here, avoiding any timing race with enterGame()
+  console.log('[WebRTC] handleOffer — faceStream:', !!faceStream, 'tabletopStream:', !!tabletopStream);
   if (!pc) setupPeerConnection();
   await pc.setRemoteDescription(new RTCSessionDescription(sdp));
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
+  console.log('[WebRTC] sending ANSWER');
   wsSend({ type: 'ANSWER', sdp: answer });
 }
 
@@ -414,10 +535,21 @@ function setupDataChannel() {
   };
 }
 
+function remoteVideoIdForStream(streamId) {
+  if (!remoteStreamMapping) return null;
+  if (streamId === remoteStreamMapping.faceStreamId) return 'remote-face';
+  if (streamId === remoteStreamMapping.tabletopStreamId) return 'remote-tabletop';
+  return null;
+}
+
 // Called whenever either remoteStreams or remoteStreamMapping is updated —
 // whichever arrives last will complete the assignment.
 function applyRemoteStreams() {
-  if (!remoteStreamMapping) return;
+  if (!remoteStreamMapping) {
+    console.log('[WebRTC] applyRemoteStreams — no mapping yet, known streams:', Object.keys(remoteStreams));
+    return;
+  }
+  console.log('[WebRTC] applyRemoteStreams — mapping:', remoteStreamMapping, 'known streams:', Object.keys(remoteStreams));
   const { faceStreamId, tabletopStreamId } = remoteStreamMapping;
 
   if (faceStreamId === null) {
@@ -431,7 +563,7 @@ function applyRemoteStreams() {
   }
 
   if (tabletopStreamId === null) {
-    showVideoError('remote-tabletop', 'No tabletop cam');
+    showPeerNoTabletop();
   } else {
     const tabletop = remoteStreams[tabletopStreamId];
     if (tabletop && $('remote-tabletop').srcObject !== tabletop) {
@@ -527,60 +659,30 @@ async function switchGameCamera(slot, newDeviceId) {
   else tabletopStream = stream;
 }
 
-async function applyGameCameras() {
-  const newFaceId = $('game-face-cam-select').value;
-  const newTabId  = $('game-tabletop-cam-select').value;
+async function switchGameMic(newDeviceId) {
+  const currentId = micStream?.getAudioTracks()[0]?.getSettings().deviceId ?? 'disabled';
+  if (currentId === newDeviceId) return;
 
-  await switchGameCamera('face', newFaceId);
-  await switchGameCamera('tabletop', newTabId);
+  micStream?.getTracks().forEach(t => t.stop());
+  micStream = null;
 
-  // Always re-send STREAM_MAPPING so remote reflects any disabled/enabled changes
-  if (dc?.readyState === 'open') {
-    dc.send(JSON.stringify({
-      type: 'STREAM_MAPPING',
-      faceStreamId: faceStream?.id ?? null,
-      tabletopStreamId: tabletopStream?.id ?? null,
-    }));
+  if (newDeviceId !== 'disabled') {
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: newDeviceId } },
+      });
+      // Respect current mute state on the new track
+      if (micMuted) micStream.getAudioTracks().forEach(t => { t.enabled = false; });
+    } catch (e) {
+      console.warn('Mic switch failed:', e.message);
+    }
   }
 
-  syncSecondaryPanel();
-
-  localStorage.setItem(CAM_STORAGE_KEY, JSON.stringify({
-    faceDeviceId: newFaceId,
-    tabletopDeviceId: newTabId,
-  }));
-}
-
-// ===== Camera swap =====
-function swapCameras() {
-  // Swap stream and sender variables so they stay aligned
-  [faceStream, tabletopStream] = [tabletopStream, faceStream];
-  [faceVideoSender, tabletopVideoSender] = [tabletopVideoSender, faceVideoSender];
-
-  // Update local previews
-  if (faceStream) { clearVideoError('local-face'); $('local-face').srcObject = faceStream; }
-  else showVideoError('local-face');
-  if (tabletopStream) { clearVideoError('local-tabletop'); $('local-tabletop').srcObject = tabletopStream; }
-  else showVideoError('local-tabletop');
-
-  // Tell the remote to re-assign which stream ID maps to face vs tabletop.
-  // The tracks stay in their original streams — we're just updating the semantic
-  // labels so the remote's video elements re-bind to the correct streams.
-  if (dc?.readyState === 'open') {
-    dc.send(JSON.stringify({
-      type: 'STREAM_MAPPING',
-      faceStreamId: faceStream?.id ?? null,
-      tabletopStreamId: tabletopStream?.id ?? null,
-    }));
+  if (micSender) {
+    try { await micSender.replaceTrack(micStream?.getAudioTracks()[0] ?? null); } catch {}
   }
-
-  // Transform states travel with their camera when swapping
-  const tmp = videoTransforms['face-cam'];
-  videoTransforms['face-cam'] = videoTransforms['tabletop-cam'];
-  videoTransforms['tabletop-cam'] = tmp;
-
-  syncSecondaryPanel();
 }
+
 
 // ===== Video transforms (pan / zoom / rotate) =====
 // Transforms are keyed by a logical slot name, not DOM element ID.
@@ -714,17 +816,12 @@ function toggleLocalCam(stream, btnId) {
 
 // ===== Mic mute =====
 function toggleLocalMic() {
-  if (!pc) return;
-  const audioSenders = pc.getSenders().filter(s => s.track?.kind === 'audio');
-  if (!audioSenders.length) return;
-
-  const nowMuted = audioSenders[0].track.enabled; // toggling: if currently enabled, we're about to mute
-  audioSenders.forEach(s => { s.track.enabled = !nowMuted; });
-
+  micMuted = !micMuted;
+  if (micStream) micStream.getAudioTracks().forEach(t => { t.enabled = !micMuted; });
   const btn = $('local-mic-mute');
-  btn.textContent = nowMuted ? '🔇' : '🎤'; // 🔇 or 🎤
-  btn.title = nowMuted ? 'Unmute mic' : 'Mute mic';
-  btn.classList.toggle('muted', nowMuted);
+  btn.textContent = micMuted ? '🔇' : '🎤';
+  btn.title = micMuted ? 'Unmute mic' : 'Mute mic';
+  btn.classList.toggle('muted', micMuted);
 }
 
 // ===== Remote audio controls =====
@@ -768,23 +865,43 @@ function clearLobbyError() {
   el.className = 'status-msg';
 }
 
+// ===== Opponent name =====
+function setOpponentName(name) {
+  opponentName = name;
+  $('face-overlay-title').textContent = `⋮ ${name}`;
+  $('remote-tabletop-label').textContent = `${name}'s Tabletop`;
+}
+
 // ===== Draggable overlay =====
-function makeDraggable(el) {
-  const handle = el.querySelector('.overlay-header');
-  let startX, startY, startLeft, startTop;
+// Works for any element + handle. On first drag converts bottom/right CSS to top/left
+// so subsequent moves are always in the same coordinate space.
+function makeDraggable(el, handle, getEffectiveHeight) {
+  handle = handle ?? el.querySelector('.overlay-header');
 
   handle.addEventListener('mousedown', e => {
+    if (e.target.closest('button, input, select')) return;
     e.preventDefault();
-    startX = e.clientX;
-    startY = e.clientY;
-    startLeft = el.offsetLeft;
-    startTop = el.offsetTop;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const parent = el.offsetParent || document.body;
+    let startLeft, startTop, normalised = false;
 
     const onMove = e => {
-      const newLeft = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, startLeft + e.clientX - startX));
-      const newTop  = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, startTop + e.clientY - startY));
+      if (!normalised) {
+        // Normalise bottom/right → top/left on the first actual drag movement,
+        // not on mousedown, so plain clicks don't disturb CSS-based positioning.
+        el.style.top = el.offsetTop + 'px'; el.style.bottom = 'auto';
+        el.style.left = el.offsetLeft + 'px'; el.style.right = 'auto';
+        startLeft = el.offsetLeft;
+        startTop  = el.offsetTop;
+        normalised = true;
+      }
+      const effectiveH = getEffectiveHeight ? getEffectiveHeight() : el.offsetHeight;
+      const newLeft = Math.max(0, Math.min(parent.clientWidth  - el.offsetWidth,  startLeft + e.clientX - startX));
+      const newTop  = Math.max(0, Math.min(parent.clientHeight - effectiveH,       startTop  + e.clientY - startY));
       el.style.left = newLeft + 'px';
-      el.style.top  = newTop + 'px';
+      el.style.top  = newTop  + 'px';
     };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
@@ -828,18 +945,26 @@ async function init() {
 
   $('face-cam-select').addEventListener('change', saveCameraSelections);
   $('tabletop-cam-select').addEventListener('change', saveCameraSelections);
+  $('mic-select').addEventListener('change', saveCameraSelections);
 
-  $('create-btn').addEventListener('click', () => {
+  $('create-btn').addEventListener('click', async () => {
     const name = $('display-name').value.trim();
     const password = $('create-password').value.trim();
     if (!name) return showLobbyError('Please enter a display name.');
     if (!password) return showLobbyError('Please enter a room password.');
     myName = name;
+    currentRoomPassword = password;
+    localStorage.setItem(NAME_STORAGE_KEY, name);
     clearLobbyError();
+    $('create-btn').disabled = true;
+    console.log('[Init] Starting local streams before CREATE_ROOM');
+    await startLocalStreams();
+    console.log('[Init] Streams ready — faceStream:', !!faceStream, 'tabletopStream:', !!tabletopStream);
+    $('create-btn').disabled = false;
     wsSend({ type: 'CREATE_ROOM', password, name });
   });
 
-  $('join-btn').addEventListener('click', () => {
+  $('join-btn').addEventListener('click', async () => {
     const name = $('display-name').value.trim();
     const code = $('join-code').value.trim().toUpperCase();
     const password = $('join-password').value.trim();
@@ -847,7 +972,14 @@ async function init() {
     if (code.length !== 4) return showLobbyError('Enter the 4-character room code.');
     if (!password) return showLobbyError('Please enter the room password.');
     myName = name;
+    currentRoomPassword = password;
+    localStorage.setItem(NAME_STORAGE_KEY, name);
     clearLobbyError();
+    $('join-btn').disabled = true;
+    console.log('[Init] Starting local streams before JOIN_ROOM');
+    await startLocalStreams();
+    console.log('[Init] Streams ready — faceStream:', !!faceStream, 'tabletopStream:', !!tabletopStream);
+    $('join-btn').disabled = false;
     wsSend({ type: 'JOIN_ROOM', roomCode: code, password, name });
   });
 
@@ -855,19 +987,41 @@ async function init() {
     e.target.value = e.target.value.toUpperCase();
   });
 
-  $('swap-btn').addEventListener('click', swapCameras);
 
   $('controls-btn').addEventListener('click', () => {
     $('controls-toggle').classList.toggle('open');
+  });
+
+  const SVG_EYE = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  const SVG_EYE_OFF = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+
+  $('room-password-toggle').innerHTML = SVG_EYE;
+
+  let passwordVisible = false;
+  $('room-password-toggle').addEventListener('click', () => {
+    passwordVisible = !passwordVisible;
+    $('room-password-value').textContent = passwordVisible
+      ? (currentRoomPassword ?? '')
+      : '•'.repeat(currentRoomPassword?.length ?? 4);
+    $('room-password-toggle').innerHTML = passwordVisible ? SVG_EYE_OFF : SVG_EYE;
+    $('room-password-toggle').title = passwordVisible ? 'Hide password' : 'Show password';
   });
 
   document.querySelectorAll('.layout-btn').forEach(btn => {
     btn.addEventListener('click', () => applyLayout(btn.dataset.layout));
   });
 
+  let savedOverlayHeight = null;
   $('face-overlay-minimize').addEventListener('click', () => {
-    const isMin = $('face-overlay').classList.toggle('minimized');
+    const el = $('face-overlay');
+    const isMin = el.classList.toggle('minimized');
     $('face-overlay-minimize').textContent = isMin ? '+' : '−';
+    if (isMin) {
+      savedOverlayHeight = el.style.height || null;
+      el.style.height = '';
+    } else {
+      if (savedOverlayHeight) el.style.height = savedOverlayHeight;
+    }
   });
 
   $('local-face-vid').addEventListener('click', () => toggleLocalCam(faceStream, 'local-face-vid'));
@@ -878,7 +1032,22 @@ async function init() {
   setupCamControls('remote-tabletop-controls');
   setupCamControls('local-tabletop-main-controls');
 
-  $('apply-cams-btn').addEventListener('click', applyGameCameras);
+  $('game-face-cam-select').addEventListener('change', async e => {
+    await switchGameCamera('face', e.target.value);
+    syncSecondaryPanel();
+    saveCameraSelections();
+    if (dc?.readyState === 'open') dc.send(JSON.stringify({ type: 'STREAM_MAPPING', faceStreamId: faceStream?.id ?? null, tabletopStreamId: tabletopStream?.id ?? null }));
+  });
+  $('game-tabletop-cam-select').addEventListener('change', async e => {
+    await switchGameCamera('tabletop', e.target.value);
+    syncSecondaryPanel();
+    saveCameraSelections();
+    if (dc?.readyState === 'open') dc.send(JSON.stringify({ type: 'STREAM_MAPPING', faceStreamId: faceStream?.id ?? null, tabletopStreamId: tabletopStream?.id ?? null }));
+  });
+  $('game-mic-select').addEventListener('change', async e => {
+    await switchGameMic(e.target.value);
+    saveCameraSelections();
+  });
 
   // Draggable split divider
   $('split-divider').addEventListener('mousedown', e => {
@@ -936,7 +1105,7 @@ async function init() {
   });
 
   // Chat
-  $('chat-header').addEventListener('click', () => {
+  $('chat-toggle-btn').addEventListener('click', () => {
     const box = $('chat-box');
     const collapsed = box.classList.toggle('collapsed');
     $('chat-toggle-btn').textContent = collapsed ? '▴' : '▾';
@@ -946,16 +1115,76 @@ async function init() {
     }
   });
 
+  // Chat font size (rem, clamped 0.6–1.2)
+  let chatFontSize = 0.8;
+  const setChatFont = size => {
+    chatFontSize = Math.min(1.2, Math.max(0.6, size));
+    $('chat-messages').style.fontSize = `${chatFontSize}rem`;
+  };
+  $('chat-font-plus') .addEventListener('click', () => setChatFont(chatFontSize + 0.1));
+  $('chat-font-minus').addEventListener('click', () => setChatFont(chatFontSize - 0.1));
+
   $('chat-send-btn').addEventListener('click', sendChat);
 
   $('chat-input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
   });
 
-  // Prevent header click from firing when clicking inside the input row
-  $('chat-input-row').addEventListener('click', e => e.stopPropagation());
-
   makeDraggable($('face-overlay'));
+
+  // Chat box uses bottom-anchored drag so the header stays fixed and body expands upward.
+  $('chat-header').addEventListener('mousedown', e => {
+    if (e.target.closest('button, input, select')) return;
+    e.preventDefault();
+    const startX = e.clientX, startY = e.clientY;
+    const box = $('chat-box');
+    const parent = box.offsetParent || document.body;
+    let startLeft, startBottom, normalised = false;
+    const onMove = e => {
+      if (!normalised) {
+        box.style.right  = 'auto';
+        box.style.top    = 'auto';
+        box.style.left   = box.offsetLeft + 'px';
+        box.style.bottom = Math.max(0, parent.clientHeight - box.offsetTop - box.offsetHeight) + 'px';
+        startLeft   = box.offsetLeft;
+        startBottom = parseFloat(box.style.bottom);
+        normalised  = true;
+      }
+      const newLeft   = Math.max(0, Math.min(parent.clientWidth  - box.offsetWidth,  startLeft   + e.clientX - startX));
+      const newBottom = Math.max(0, Math.min(parent.clientHeight - box.offsetHeight, startBottom - (e.clientY - startY)));
+      box.style.left   = newLeft   + 'px';
+      box.style.bottom = newBottom + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // Resize handle for face overlay
+  $('face-overlay-resize').addEventListener('mousedown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = $('face-overlay');
+    if (el.classList.contains('minimized')) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = el.offsetWidth;
+    const startH = el.offsetHeight;
+
+    const onMove = e => {
+      el.style.width  = Math.max(140, startW + e.clientX - startX) + 'px';
+      el.style.height = Math.max(80,  startH + e.clientY - startY) + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);

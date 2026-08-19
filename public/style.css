@@ -321,7 +321,7 @@ h1 {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
-  min-width: 220px;
+  width: 250px;
   box-shadow: 0 8px 28px rgba(0,0,0,0.65);
   flex-direction: column;
   gap: 8px;
@@ -339,7 +339,7 @@ h1 {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   flex-shrink: 0;
-  width: 46px;
+  width: 58px;
 }
 
 .game-cam-select {
@@ -428,6 +428,8 @@ h1 {
   top: 16px;
   left: 16px;
   width: 220px;
+  min-width: 140px;
+  min-height: 80px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -435,6 +437,8 @@ h1 {
   box-shadow: 0 4px 24px rgba(0,0,0,0.6);
   z-index: 150;
   user-select: none;
+  display: flex;
+  flex-direction: column;
 }
 
 .overlay-header {
@@ -451,6 +455,28 @@ h1 {
 
 .overlay-header:active { cursor: grabbing; }
 
+.overlay-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  z-index: 10;
+  /* Diagonal grip lines */
+  background: linear-gradient(
+    135deg,
+    transparent 40%,
+    rgba(255,255,255,0.15) 40%,
+    rgba(255,255,255,0.15) 55%,
+    transparent 55%,
+    transparent 65%,
+    rgba(255,255,255,0.15) 65%,
+    rgba(255,255,255,0.15) 80%,
+    transparent 80%
+  );
+}
+
 .overlay-minimize-btn {
   background: none;
   border: none;
@@ -465,7 +491,9 @@ h1 {
 .overlay-minimize-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
 
 #face-overlay.minimized .video-wrapper,
-#face-overlay.minimized .overlay-controls { display: none; }
+#face-overlay.minimized .overlay-controls,
+#face-overlay.minimized .overlay-resize-handle { display: none; }
+#face-overlay.minimized { min-height: 0; }
 
 #remote-face {
   width: 100%;
@@ -543,6 +571,7 @@ h1 {
   padding: 8px 10px;
   background: var(--surface2);
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .vol-icon {
@@ -690,6 +719,16 @@ h1 {
 /* Video error overlays */
 .video-wrapper {
   position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#face-overlay .video-wrapper video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .video-error {
@@ -705,6 +744,61 @@ h1 {
   letter-spacing: 1px;
   text-align: center;
   padding: 8px;
+}
+
+/* Waiting overlay — shown in the remote tabletop panel before a peer joins */
+.waiting-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.waiting-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.waiting-share-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  opacity: 0.6;
+  margin-bottom: -8px;
+}
+
+.waiting-room-code {
+  font-family: 'Courier New', monospace;
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: 10px;
+  color: var(--accent);
+  text-indent: 10px;
+  line-height: 1;
+}
+
+.peer-no-cam-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.peer-no-cam-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.peer-no-cam-msg {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  opacity: 0.6;
 }
 
 /* ===== LAYOUT PRESETS (inside controls panel) ===== */
@@ -802,7 +896,7 @@ h1 {
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0,0,0,0.55);
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
 }
 
 #chat-header {
@@ -811,11 +905,13 @@ h1 {
   gap: 6px;
   padding: 6px 10px;
   background: var(--surface2);
-  cursor: pointer;
+  cursor: grab;
   user-select: none;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
 }
+#chat-header:active { cursor: grabbing; }
+#chat-header button { cursor: pointer; }
 
 #chat-title {
   flex: 1;
@@ -830,15 +926,21 @@ h1 {
   animation: pulse 1.2s infinite;
 }
 
-#chat-toggle-btn {
+#chat-toggle-btn,
+#chat-font-minus,
+#chat-font-plus {
   background: none;
   border: none;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 0.7rem;
-  padding: 0 2px;
+  font-size: 1.3rem;
+  padding: 0 5px;
   line-height: 1;
+  transition: color 0.12s;
 }
+#chat-toggle-btn:hover,
+#chat-font-minus:hover,
+#chat-font-plus:hover { color: var(--text); }
 
 #chat-body {
   display: flex;
@@ -938,7 +1040,7 @@ h1 {
   background: none;
   border: none;
   color: var(--text-dim);
-  font-size: 0.7rem;
+  font-size: 0.875em;
   font-style: italic;
   padding: 1px 4px;
 }
@@ -958,6 +1060,40 @@ h1 {
   letter-spacing: 3px;
   font-size: 0.85rem;
 }
+
+#game-room-password {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 0 4px;
+  font-size: 0.72rem;
+}
+
+.grp-label {
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+#room-password-value {
+  font-family: monospace;
+  color: var(--text);
+  letter-spacing: 2px;
+}
+
+#room-password-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  line-height: 0;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+#room-password-toggle:hover { color: var(--accent); }
 
 /* Utility */
 .hidden { display: none !important; }
